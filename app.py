@@ -3,77 +3,121 @@ from ultralytics import YOLO
 import cv2
 import os
 
-# Load the YOLOv8 model (replace with your model path if different)
-MODEL_PATH = "yolov8n.pt"  # Pre-trained model, or use your custom-trained model
+# Replace with your custom thermal or YOLO model path
+MODEL_PATH = "yolov8n.pt"
 model = YOLO(MODEL_PATH)
 
-def detect_objects(model, image_path, conf_threshold=0.3):
+def detect_objects(model, image, conf_threshold=0.3):
     """
-    Runs object detection on an image using the YOLO model.
+    Runs object detection on a preprocessed image using the YOLO model.
 
     Parameters:
         model: The loaded YOLOv8 model.
-        image_path (str): Path to the image file.
+        image (numpy.array): Preprocessed image (BGR).
         conf_threshold (float): Minimum confidence score for detections.
 
     Returns:
         List of detections: [(x_min, y_min, x_max, y_max, confidence, class_id)].
     """
-    # Run inference on the image
-    results = model(image_path)
+    results = model.predict(image)
     boxes = results[0].boxes
-    detections = boxes.data.cpu().numpy()
+
+    # Convert detections to NumPy
+    detections = boxes.data.cpu().numpy() if len(boxes) > 0 else []
 
     valid_detections = []
     for box in detections:
-        if len(box) != 6:  # Ensure box has expected format
-            print(f"Skipping invalid box: {box}")
+        if len(box) != 6:
             continue
-        
+
         x_min, y_min, x_max, y_max, conf, class_id = box
-        if conf >= conf_threshold:  # Filter by confidence
+        if conf >= conf_threshold:
             valid_detections.append((x_min, y_min, x_max, y_max, conf, int(class_id)))
-            print(f"Detected: Class {int(class_id)}, Conf {conf:.2f}, "
-                  f"Box ({x_min}, {y_min}, {x_max}, {y_max})")
-    
+
     return valid_detections
+
 
 def process_local_images(directory):
     """
-    Process all images in a local directory.
-
-    Parameters:
-        directory (str): Path to the folder containing thermal images.
+    Process all images in a local directory, applying CLAHE to improve
+    contrast in thermal images before detection, then draw bounding
+    boxes for visualization.
     """
-    # Check if directory exists
     if not os.path.exists(directory):
         print(f"Error: Directory '{directory}' not found.")
         return
 
-    # Loop through files in the directory
+    # Setup CLAHE parameters
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+
+    # Create an output folder to save annotated images
+    output_dir = os.path.join(directory, "annotated_results")
+    os.makedirs(output_dir, exist_ok=True)
+
     for filename in os.listdir(directory):
-        if filename.lower().endswith(('.png', '.jpg', '.jpeg')):  # Filter for image files
+        if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
             image_path = os.path.join(directory, filename)
-            print(f"Processing {filename}...")
-            
-            # Load the image
+            print(f"\nProcessing {filename}...")
+
+            # Load the image (in color)
             image = cv2.imread(image_path)
             if image is None:
                 print(f"Failed to load {filename}. Skipping.")
                 continue
-            
-            # Run object detection
-            detections = detect_objects(model, image_path)
-            if detections:
-                for det in detections:
-                    x_min, y_min, x_max, y_max, conf, class_id = det
-                    print(f"Class ID {class_id}: Conf {conf:.2f}, "
-                          f"Box ({x_min}, {y_min}, {x_max}, {y_max})")
-            else:
-                print(f"No objects detected in {filename}.")
 
-# Specify your local directory here
-image_directory = "test_thermal_data/test_images_8_bit/"  # Update this to match your folder path
+            # Convert to grayscale if dealing with thermal
+            # (some cameras store 3-channel 'false color'; adjust as needed)
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-# Process the images
+            # Apply CLAHE to enhance contrast
+            gray_eq = clahe.apply(gray)
+
+            # Convert back to BGR for YOLO if needed
+            image_preprocessed = cv2.cvtColor(gray_eq, cv2.COLOR_GRAY2BGR)
+
+            # Detect objects
+            detections = detect_objects(model, image_preprocessed, conf_threshold=0.3)
+
+            # Draw bounding boxes on image_preprocessed
+            for (x_min, y_min, x_max, y_max, conf, class_id) in detections:
+                # Convert floats to ints for drawing
+                x_min, y_min, x_max, y_max = map(int, [x_min, y_min, x_max, y_max])
+
+                # Draw rectangle
+                cv2.rectangle(
+                    image_preprocessed,
+                    (x_min, y_min),
+                    (x_max, y_max),
+                    (0, 255, 0),  # (B, G, R) color
+                    thickness=2
+                )
+
+                # Create label text: "class_id: conf"
+                label = f"{class_id}: {conf:.2f}"
+                cv2.putText(
+                    image_preprocessed,
+                    label,
+                    (x_min, y_min - 5),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (0, 255, 0),
+                    thickness=1
+                )
+
+            # If you want to show the image (blocking window)
+            # Remove these lines if running headless
+            cv2.imshow("Detections", image_preprocessed)
+            cv2.waitKey(0)  # Press any key to close the window
+
+            # Save the image with drawn boxes
+            out_path = os.path.join(output_dir, f"annotated_{filename}")
+            cv2.imwrite(out_path, image_preprocessed)
+            print(f"Annotated image saved to: {out_path}")
+
+    # Close any OpenCV windows if they remain open
+    cv2.destroyAllWindows()
+
+
+# Update this to your thermal image folder path
+image_directory = "Privacy-Solution/test_thermal_data/test_images_8_bit"
 process_local_images(image_directory)
