@@ -189,8 +189,8 @@ def process_local_images(directory):
                 print("No objects detected.")
 
             # Show the detections on screen
-            cv2.imshow("Detections", image_preprocessed)
-            cv2.waitKey(0)
+            #cv2.imshow("Detections", image_preprocessed)
+            #cv2.waitKey(0)
 
             # Save annotated image
             out_path = os.path.join(output_dir, f"annotated_{filename}")
