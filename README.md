@@ -4,7 +4,6 @@ An intelligent privacy-preserving solution for thermal imaging detection using Y
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 ![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)
-![PyTorch](https://img.shields.io/badge/PyTorch-1.7+-red.svg)
 
 ## 🔥 Overview
 
