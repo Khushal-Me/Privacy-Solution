@@ -32,7 +32,6 @@ pip install torch ultralytics opencv-python numpy pillow
 ## 📋 Requirements
 
 - Python 3.8+
-- PyTorch
 - Ultralytics YOLOv8
 - OpenCV
 - NumPy
