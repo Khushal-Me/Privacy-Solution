@@ -4,6 +4,7 @@ import cv2
 import os
 import numpy as np
 from PIL import Image
+import argparse
 
 MODEL_PATH = "yolov8n.pt"  # or your custom model
 model = YOLO(MODEL_PATH)
@@ -17,7 +18,7 @@ def convert_tiff_to_jpeg(tiff_path, output_dir):
         img = Image.open(tiff_path)
         jpeg_path = os.path.join(output_dir, os.path.splitext(os.path.basename(tiff_path))[0] + ".jpg")
         img.convert("RGB").save(jpeg_path, "JPEG")
-        return jpeg_path  # Return new JPEG path
+        return jpeg_path
     except Exception as e:
         print(f"Error converting {tiff_path} to JPEG: {e}")
         return None
@@ -26,7 +27,7 @@ def convert_tiff_to_jpeg(tiff_path, output_dir):
 def is_8bit_image(image_path):
     try:
         img = Image.open(image_path)
-        return img.mode in ["L", "P", "RGB"]  # L = 8-bit grayscale, P = 8-bit palette, RGB = standard color
+        return img.mode in ["L", "P", "RGB"]
     except Exception as e:
         print(f"Error checking image bit depth: {e}")
         return False
@@ -80,35 +81,36 @@ def detect_and_analyze(model, bgr_image, gray_image, intensity_threshold=0.3):
 
     return valid_detections
 
-def process_local_images(directory):
-    if not os.path.exists(directory):
-        print(f"Error: Directory '{directory}' not found.")
+def process_local_images(image_directory, output_directory):
+    if not os.path.exists(image_directory):
+        print(f"Error: Directory '{image_directory}' not found.")
         return
 
-    output_dir = os.path.join(directory, "annotated_results")
+    output_dir = output_directory
     os.makedirs(output_dir, exist_ok=True)
 
     txt_output_path = os.path.join(output_dir, "results.txt")
+    # Clear previous results to avoid appending to old data
+    if os.path.exists(txt_output_path):
+        os.remove(txt_output_path)
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
 
-    for filename in os.listdir(directory):
-        file_path = os.path.join(directory, filename)
+    for filename in os.listdir(image_directory):
+        file_path = os.path.join(image_directory, filename)
 
         # Convert TIFF to JPEG if needed
         if filename.lower().endswith('.tiff') or filename.lower().endswith('.tif'):
             print(f"Converting {filename} from TIFF to JPEG...")
-            converted_path = convert_tiff_to_jpeg(file_path, directory)
+            converted_path = convert_tiff_to_jpeg(file_path, image_directory)  # Still save in image_directory
             if not converted_path:
                 continue
-            file_path = converted_path  # Use new JPEG file
+            file_path = converted_path
             filename = os.path.basename(converted_path)
 
-        # Check if the image is 8-bit before processing
         if not is_8bit_image(file_path):
             print(f"Skipping {filename}: Not an 8-bit image.")
             continue
 
-        # Process only 8-bit images
         print(f"\nProcessing {filename}...")
 
         image_bgr = cv2.imread(file_path)
@@ -117,7 +119,7 @@ def process_local_images(directory):
             continue
 
         gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
-        gray_eq = clahe.apply(gray)  # Enhanced contrast
+        gray_eq = clahe.apply(gray)
 
         image_preprocessed = cv2.cvtColor(gray_eq, cv2.COLOR_GRAY2BGR)
 
@@ -132,7 +134,6 @@ def process_local_images(directory):
                     cv2.rectangle(image_preprocessed, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
                     cv2.putText(image_preprocessed, f"ID={class_id}, conf={conf:.2f}", (x_min, y_min - 5),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
-
         else:
             print("No objects detected.")
 
@@ -142,7 +143,10 @@ def process_local_images(directory):
 
     cv2.destroyAllWindows()
 
-# Usage
 if __name__ == "__main__":
-    image_directory = r"C:\Users\aditb\OneDrive\Desktop\Western AIC Competition\Privacy-Solution\test_thermal_data\test_images_8_bit"
-    process_local_images(image_directory)
+    parser = argparse.ArgumentParser(description="Process images with YOLO and save detections.")
+    parser.add_argument("--image_folder", type=str, default="test_thermal_data/test_images_8_bit", help="Path to the folder containing images.")
+    parser.add_argument("--results_folder", type=str, default="test_thermal_data/test_images_8_bit/annotated_results", help="Path to the folder to save results.")
+    args = parser.parse_args()
+
+    process_local_images(args.image_folder, args.results_folder)
